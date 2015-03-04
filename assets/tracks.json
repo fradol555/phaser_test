@@ -1,0 +1,6 @@
+{"points": [
+    {"x": 100, "y": 100, "sensor": false},
+    {"x": 500, "y": 100, "sensor": true},
+    {"x": 500, "y": 500, "sensor": false},
+    {"x": 100, "y": 500, "sensor": true}
+]}
