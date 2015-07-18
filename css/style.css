@@ -1,0 +1,30 @@
+#content {
+	width: 1000px;
+	margin: 0 auto;
+}
+
+#simulationControls {
+	text-align: center;
+}
+
+#bottom {
+	margin-top: 15px;
+	clear: both;
+	height: 200px;
+}
+
+#description {
+	float: left;
+	width: 580px;
+	height: 100%;
+	padding: 10px;
+	background-color: #eee;
+}
+
+#controlPanel {
+	float: left;
+	width: 376px;
+	height: 100%;
+	padding: 10px;
+	background-color: #ccc;
+}

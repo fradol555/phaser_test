@@ -1,6 +1,8 @@
-{"points": [
-    {"x": 100, "y": 100, "sensor": false},
-    {"x": 500, "y": 100, "sensor": true},
-    {"x": 500, "y": 500, "sensor": false},
-    {"x": 100, "y": 500, "sensor": true}
-]}
+{
+    "isCycle": false,
+    "points": [
+        {"x": 550, "y": 300, "sensor": false},
+        {"x": 200, "y": 300, "sensor": true},
+        {"x": 50, "y": 300, "sensor": false}
+    ]
+}
