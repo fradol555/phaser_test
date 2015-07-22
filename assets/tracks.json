@@ -2,7 +2,7 @@
     "isCycle": false,
     "points": [
         {"x": 550, "y": 300, "sensor": false},
-        {"x": 200, "y": 300, "sensor": true},
-        {"x": 50, "y": 300, "sensor": false}
+        {"x": 250, "y": 300, "sensor": true},
+        {"x": -100, "y": 300, "sensor": false}
     ]
 }

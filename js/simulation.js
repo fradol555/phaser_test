@@ -49,7 +49,7 @@ var Train = function(game, points, gap, isCycle) {
     }
     this.run = false;
     
-    this.MAX_SPEED = 100; // pixels/second
+    this.MAX_SPEED = 50; // pixels/second
 };
 Train.prototype = Object.create(Phaser.Sprite.prototype);
 Train.prototype.constructor = Train;
@@ -92,6 +92,7 @@ Train.prototype.stop = function () {
     this.body.velocity.setTo(0, 0);
 };
 
+// APPLICATION STATES
 function Boot () {
 }
 Boot.prototype = {
@@ -120,10 +121,26 @@ Preload.prototype = {
         this.game.load.image('train', 'assets/bird.png');
         this.game.load.image('sensor', 'assets/pipe.png');
         this.game.load.spritesheet('controlButton', 'assets/controlButton.png', 64, 64, 9);
-        this.game.load.spritesheet('button', 'assets/button.png', 50, 50, 2);
-        this.game.load.spritesheet('schemat', 'assets/schemat.png', 600, 100, 4);
         
-        this.game.load.json('tracksPoints', 'assets/tracks.json', true);
+		this.game.load.spritesheet('semaphor', 'assets/semaphor.png', 50, 100, 3);
+		this.game.load.spritesheet('button', 'assets/button.png', 50, 50, 2);
+        this.game.load.spritesheet('speedControl', 'assets/button.png', 50, 50, 2);
+        this.game.load.spritesheet('bell', 'assets/button.png', 50, 50, 2);
+		this.game.load.spritesheet('schemat', 'assets/schemat.png', 600, 100, 4);
+        
+		this.game.load.audio('ringing', 'assets/ringing.wav');
+        
+		this.game.load.json('tracksPoints', 'assets/tracks.json', true);
+
+		this.game.CurrentStateEnum = {
+			BEFORE_START       : "Before start",
+			START              : "Start",
+			NEED_REACTION      : "Need reaction",
+			GAIN_REACTION      : "Gain reaction", 
+			FIRST_NO_REACTION  : "First no reaction",
+			SECOND_NO_REACTION : "Second no reaction",
+			END                : "End"
+		};
     },
     create: function () {
         this.asset.cropEnabled = false;
@@ -168,20 +185,23 @@ Main.prototype = {
         //SENSORS
         this.sensors = this.game.add.group();
         this.drawSensors(this.sensors, this.tracksJSON.points);
-        
+        this.reactionTimer = this.game.time.create(false);
+		this.reactionTimer.repeat(Phaser.Timer.SECOND * 1.5, 2, this.checkReaction, this);
+		this.ringingSound = this.game.add.audio('ringing', 0.5, true);
+		
         //TRAIN
         this.train = new Train(this.game, this.tracksJSON.points, 0, this.tracksJSON.isCycle);
         this.game.add.existing(this.train);
-        this.isTrainOverSensor = false;
         
-        this.wagons = this.game.add.group();
-        for (var i = 1; i < 1; i++) {
-            this.wagons.add(new Train(this.game, this.tracksJSON.points, i, this.tracksJSON.isCycle));
-        }
-        
-		this.game.add.button(0, 330, 'controlButton', this.startSimulation, this, 2, 1, 0, 1);
-		this.game.add.button(70, 330, 'controlButton', this.stopSimulation, this, 5, 4, 3, 4);
-		this.game.add.button(140, 330, 'controlButton', this.resetSimulation, this, 8, 7, 6, 7);
+        //this.wagons = this.game.add.group();
+        //for (var i = 1; i < 1; i++) {
+        //    this.wagons.add(new Train(this.game, this.tracksJSON.points, i, this.tracksJSON.isCycle));
+        //}
+        this.semaphor = this.game.add.button(10, 200, 'semaphor', this.semaphorClick, this, 0, 0, 0, 0);
+		
+		this.game.add.button(194, 330, 'controlButton', this.startSimulation, this, 2, 1, 0, 1);
+		this.game.add.button(268, 330, 'controlButton', this.pauseSimulation, this, 5, 4, 3, 4);
+		this.game.add.button(342, 330, 'controlButton', this.resetSimulation, this, 8, 7, 6, 7);
 		
         //// SCHEMA
         this.schema = this.game.add.sprite(600, 0, 'schemat');
@@ -203,33 +223,136 @@ Main.prototype = {
         this.controlPanel = this.game.add.group();
 		this.controlPanel.x = 600;
 		this.controlPanel.y = 400;
-        this.reactionButton = this.controlPanel.add(new ReactionButton(this.game, 50, 50, this.reactionClick, this));
+		
+		
+		this.speedControl = this.controlPanel.add(new Phaser.Sprite(this.game, 200, 100, 'speedControl', 1));
+		this.speedControl.inputEnabled = true;
+		this.speedControl.anchor.set(0.5);
+		this.speedControl.input.enableDrag();
+		this.speedControl.input.allowHorizontalDrag = false;
+		this.speedControl.input.boundsRect = new Phaser.Rectangle(0, 25, 400, 150);
+		this.speedControl.input.useHandCursor = true;
+		
+		this.trainSpeedLabel = this.controlPanel.add(new Phaser.Text(this.game, 20, 100, '0', {
+            font: '30px Arial',
+            fill: '#000'
+        }));
+		
+        this.reactionButton = this.controlPanel.add(new ReactionButton(this.game, 325, 150, this.reactionClick, this));
         this.reactionButton.anchor.setTo(0.5, 0.5);
+		
+        this.ringingBell = this.controlPanel.add(new Phaser.Sprite(this.game, 325, 50, 'bell', 0));
+        this.ringingBell.anchor.setTo(0.5, 0.5);
+        this.ringingBell.animations.add('ringing', [0, 1], 8, true);
+		
+		this.setState(this.game.CurrentStateEnum.BEFORE_START);
     },
+	setState: function(newState) {
+		console.log("New state: " + newState);
+		switch (newState) {
+			case this.game.CurrentStateEnum.BEFORE_START:
+				this.isTrainOverSensor = false;
+				this.isRinging = false;
+				this.isEnded = false;
+				break;
+				
+			case this.game.CurrentStateEnum.START:
+				this.descriptionText.setText("Start symulacji");
+				this.schema.play('step1');
+				break;
+				
+			case this.game.CurrentStateEnum.NEED_REACTION:
+				this.descriptionText.setText("Wymagana reakcja");
+				this.isReaction = false;
+				this.schema.play('step2');
+				this.reactionButton.playAnimation();
+				this.reactionTimer.start();
+				break;
+			
+			case this.game.CurrentStateEnum.GAIN_REACTION:	
+				this.isReaction = true;
+				this.reactionButton.stopAnimation();
+				this.ringingSound.stop();
+				this.ringingBell.animations.stop('ringing', true);
+				break;
+			
+			case this.game.CurrentStateEnum.FIRST_NO_REACTION:			
+				this.isRinging = true;
+				this.ringingSound.play();
+				this.ringingBell.play('ringing');
+				break;
+				
+			case this.game.CurrentStateEnum.SECOND_NO_REACTION:
+				this.ringingSound.stop();
+				this.ringingBell.animations.stop('ringing', true);
+				this.reactionButton.stopAnimation();
+				this.train.stop();
+				this.isEnded = true;
+				break;
+				
+			default:
+				console.log("Unknown state");
+				return;
+		}
+		this.game.currentState = newState;
+	},
+	
+	// SIMULATION METHODS
     startSimulation: function () {
-        this.descriptionText.setText("Start symulacji");
-        this.train.start();
-        this.wagons.callAll('start');
-		this.schema.animations.play('step1');
+		if (!this.isEnded) {
+			this.train.start();
+			//this.wagons.callAll('start');
+			if (this.reactionTimer.paused) {
+				this.reactionTimer.resume();
+			}
+		}
     },
-    stopSimulation: function () {
+    pauseSimulation: function () {
         this.train.stop();
-        this.wagons.callAll('stop');
-		this.schema.animations.stop();
+        //this.wagons.callAll('stop');
+		this.reactionTimer.pause();
     },
     resetSimulation: function () {
-        this.restartGame();
+		this.reactionTimer.destroy();
+		this.ringingSound.destroy();
+        this.game.state.start('main');
     },
     update: function () {
-        if (!this.train.inWorld) {
-            this.restartGame();
-        }
         if (!this.isTrainOverSensor) {
             this.isTrainOverSensor = this.game.physics.arcade.overlap(this.train, this.sensors, this.needReaction, null, this);
         } else {
             this.isTrainOverSensor = this.game.physics.arcade.overlap(this.train, this.sensors, null, null, this);
         }
-    },    
+		this.trainSpeed = this.speedControl.y - 50;
+		this.trainSpeedLabel.setText(this.trainSpeed.toString());
+		this.train.MAX_SPEED = this.trainSpeed;
+    },
+
+	// REACTION METHODS
+    needReaction: function () {
+		this.setState(this.game.CurrentStateEnum.NEED_REACTION);
+    },
+    reactionClick: function () {
+        if (!this.isReaction) {
+			this.setState(this.game.CurrentStateEnum.GAIN_REACTION);
+        }
+    },
+    checkReaction: function () {
+        if (!this.isReaction) {
+			if (this.isRinging) {
+				this.setState(this.game.CurrentStateEnum.SECOND_NO_REACTION);
+			} else {
+				this.setState(this.game.CurrentStateEnum.FIRST_NO_REACTION);
+			}
+        } else {
+        }
+    },  
+	semaphorClick: function() {
+		var frame = (this.semaphor.frame + 1) % 3;
+		this.semaphor.setFrames(frame, frame, frame, frame);
+	},
+
+	// DRAWING METHODS
     drawTracks: function (bitmap, points, isCycle) {
         var i;
         bitmap.ctx.beginPath();
@@ -250,36 +373,6 @@ Main.prototype = {
                 group.add(new Sensor(group.game, points[i].x, points[i].y));
             }
         }
-    },    
-    needReaction: function () {
-        this.descriptionText.setText("Wymagana reakcja");
-        this.isReaction = false;
-        this.schema.animations.play('step2');
-        this.reactionButton.angle = 45;
-        this.reactionButton.playAnimation();
-        this.game.time.events.add(Phaser.Timer.SECOND * 1.5, this.checkReaction, this).autoDestroy = true;
-    },
-    reactionClick: function () {
-        if (!this.isReaction) {
-            this.isReaction = true;
-            this.reactionButton.angle = 0;
-            this.reactionButton.stopAnimation();
-        }
-    },
-    checkReaction: function () {
-        if (!this.isReaction) {
-            this.reactionButton.angle = 0;
-            this.reactionButton.stopAnimation();
-            this.stopSimulation();
-            this.endInfo.visible = true;
-            this.game.input.onDown.addOnce(this.restartGame, this);
-        } else {
-            this.score += 1;
-            this.labelScore.setText(this.score.toString());
-        }
-    },
-    restartGame: function () {
-        this.game.state.start('main');
     }
 };
 
