@@ -5,17 +5,18 @@ var gameH = 600;
 
 var Sensor = function(game, x, y) {
     Phaser.Sprite.call(this, game, x, y, 'sensor');
-    this.anchor.setTo(0.5, 0.5);
+	this.scale.setTo(0.5, 0.5);
+    this.anchor.setTo(0.5, 0.1);
     this.game.physics.enable(this, Phaser.Physics.ARCADE);
-    this.width = 20;
-    this.height = 20;
+    //this.width = 100;
+    //this.height = 20;
 }
 Sensor.prototype = Object.create(Phaser.Sprite.prototype);
 Sensor.prototype.constructor = Sensor;
 
 var ReactionButton = function(game, x, y, callback, callbackContext) {
     Phaser.Button.call(this, game, x, y, '', callback, callbackContext);
-    this.bodySprite = this.game.add.sprite(0, 0, 'button');
+    this.bodySprite = this.game.add.sprite(0, 0, 'reactionButton');
     this.bodySprite.anchor.setTo(0.5, 0.5);
     this.addChild(this.bodySprite);
     this.bodySprite.animations.add('needReaction', null, 4, true);
@@ -31,7 +32,8 @@ ReactionButton.prototype.stopAnimation = function() {
 
 var Train = function(game, points, gap, isCycle) {
     Phaser.Sprite.call(this, game, 0, 0, 'train');
-    this.anchor.setTo(0.5, 0.5);
+	this.scale.setTo(0.25, 0.25);
+    this.anchor.setTo(0.5, 1);
     this.game.physics.enable(this, Phaser.Physics.ARCADE);
 
     this.points = points;
@@ -118,15 +120,17 @@ Preload.prototype = {
         this.load.setPreloadSprite(this.asset);
     
         this.game.stage.backgroundColor = '#71c500';
-        this.game.load.image('train', 'assets/bird.png');
+        this.game.load.image('train', 'assets/train.png');
         this.game.load.image('sensor', 'assets/pipe.png');
+        this.game.load.image('background', 'assets/background.png');
         this.game.load.spritesheet('controlButton', 'assets/controlButton.png', 64, 64, 9);
         
 		this.game.load.spritesheet('semaphor', 'assets/semaphor.png', 50, 100, 3);
-		this.game.load.spritesheet('button', 'assets/button.png', 50, 50, 2);
-        this.game.load.spritesheet('speedControl', 'assets/button.png', 50, 50, 2);
-        this.game.load.spritesheet('bell', 'assets/button.png', 50, 50, 2);
-		this.game.load.spritesheet('schemat', 'assets/schemat.png', 600, 100, 4);
+        this.game.load.spritesheet('speedControl', 'assets/speedControl.png', 200, 200, 7);
+		this.game.load.spritesheet('reactionButton', 'assets/button.png', 168, 168, 2);
+		this.game.load.spritesheet('reactionSignal', 'assets/signal.png', 160, 160, 2);
+        this.game.load.spritesheet('reactionBell', 'assets/bell.png', 50, 50, 2);
+		this.game.load.spritesheet('schemat', 'assets/schemat.png', 400, 400, 4);
         
 		this.game.load.audio('ringing', 'assets/ringing.wav');
         
@@ -158,11 +162,14 @@ Preload.prototype = {
 function Main() {
 }
 Main.prototype = {
-    create: function () {      
+    create: function () {      		
+        this.game.physics.startSystem(Phaser.Physics.ARCADE);
+		
         //AUTOSTART
 		//this.game.time.events.add(Phaser.Timer.SECOND * 1.5, this.startSimulation, this).autoDestroy = true;		
-	    this.game.stage.backgroundColor = '#fff';
-		
+	    
+		//BACKGORUND
+		this.game.stage.backgroundColor = '#fff';	
 		var background = game.add.graphics(0, 0);
 		background.beginFill(0xEEEEEE);
 		background.drawRect(0, 0, 1000, 400);
@@ -173,14 +180,16 @@ Main.prototype = {
 		background.beginFill(0xCCCCCC);
 		background.drawRect(600, 400, 400, 200);
 		background.endFill();
+        
+        this.backgroundImage = this.game.add.sprite(0, 0, 'background');
+		this.backgroundImage.width = 600;
+		this.backgroundImage.height = 400;
 		
-        this.game.physics.startSystem(Phaser.Physics.ARCADE);
-                        
         //TRACKS
         this.tracksJSON = this.game.cache.getJSON('tracksPoints');
         this.tracksBitmap = this.game.add.bitmapData(this.game.width, this.game.height);
         this.drawTracks(this.tracksBitmap, this.tracksJSON.points, this.tracksJSON.isCycle);
-        this.tracks = this.game.add.sprite(0, 0, this.tracksBitmap);
+        //this.tracks = this.game.add.sprite(0, 0, this.tracksBitmap);
         
         //SENSORS
         this.sensors = this.game.add.group();
@@ -199,9 +208,9 @@ Main.prototype = {
         //}
         this.semaphor = this.game.add.button(10, 200, 'semaphor', this.semaphorClick, this, 0, 0, 0, 0);
 		
-		this.game.add.button(194, 330, 'controlButton', this.startSimulation, this, 2, 1, 0, 1);
-		this.game.add.button(268, 330, 'controlButton', this.pauseSimulation, this, 5, 4, 3, 4);
-		this.game.add.button(342, 330, 'controlButton', this.resetSimulation, this, 8, 7, 6, 7);
+		this.game.add.button(194, 40, 'controlButton', this.startSimulation, this, 2, 1, 0, 1);
+		this.game.add.button(268, 40, 'controlButton', this.pauseSimulation, this, 5, 4, 3, 4);
+		this.game.add.button(342, 40, 'controlButton', this.resetSimulation, this, 8, 7, 6, 7);
 		
         //// SCHEMA
         this.schema = this.game.add.sprite(600, 0, 'schemat');
@@ -224,24 +233,36 @@ Main.prototype = {
 		this.controlPanel.x = 600;
 		this.controlPanel.y = 400;
 		
+		this.speedControl = this.controlPanel.add(new Phaser.Button(this.game, 50, 10, 'speedControl', this.speedControlClick, this, 0, 0, 0, 0));
+		this.trainSpeed = 0;
 		
-		this.speedControl = this.controlPanel.add(new Phaser.Sprite(this.game, 200, 100, 'speedControl', 1));
+		/*this.speedControl = this.controlPanel.add(new Phaser.Sprite(this.game, 200, 100, 'speedControl', 1));
 		this.speedControl.inputEnabled = true;
 		this.speedControl.anchor.set(0.5);
 		this.speedControl.input.enableDrag();
 		this.speedControl.input.allowHorizontalDrag = false;
-		this.speedControl.input.boundsRect = new Phaser.Rectangle(0, 25, 400, 150);
+		this.speedControl.input.boundsRect = new Phaser.Rectangle(0, 25, 400, 150);*/
 		this.speedControl.input.useHandCursor = true;
 		
-		this.trainSpeedLabel = this.controlPanel.add(new Phaser.Text(this.game, 20, 100, '0', {
+		this.trainSpeedLabel = this.controlPanel.add(new Phaser.Text(this.game, 10, 100, '0', {
             font: '30px Arial',
             fill: '#000'
         }));
 		
-        this.reactionButton = this.controlPanel.add(new ReactionButton(this.game, 325, 150, this.reactionClick, this));
-        this.reactionButton.anchor.setTo(0.5, 0.5);
+        //this.reactionButton = this.controlPanel.add(new ReactionButton(this.game, 325, 150, this.reactionClick, this));
+        //this.reactionButton.anchor.setTo(0.5, 0.5);
+				
+		this.reactionButton = this.controlPanel.add(new Phaser.Button(this.game, 300, 150, 'reactionButton', this.reactionClick, this, 0, 0, 1, 0));
+		this.reactionButton.scale.setTo(0.5, 0.5);
+		this.reactionButton.anchor.setTo(0.5, 0.5);
+		this.reactionButton.input.useHandCursor = true;
 		
-        this.ringingBell = this.controlPanel.add(new Phaser.Sprite(this.game, 325, 50, 'bell', 0));
+        this.reactionSignal = this.controlPanel.add(new Phaser.Sprite(this.game, 275, 50, 'reactionSignal', 0));
+		this.reactionSignal.scale.setTo(0.5, 0.5);
+        this.reactionSignal.anchor.setTo(0.5, 0.5);
+        this.reactionSignal.animations.add('signaling', [0, 1], 4, true);
+		
+        this.ringingBell = this.controlPanel.add(new Phaser.Sprite(this.game, 350, 50, 'reactionBell', 0));
         this.ringingBell.anchor.setTo(0.5, 0.5);
         this.ringingBell.animations.add('ringing', [0, 1], 8, true);
 		
@@ -265,14 +286,16 @@ Main.prototype = {
 				this.descriptionText.setText("Wymagana reakcja");
 				this.isReaction = false;
 				this.schema.play('step2');
-				this.reactionButton.playAnimation();
+				//this.reactionButton.playAnimation();
+				this.reactionSignal.play('signaling');
 				this.reactionTimer.start();
 				break;
 			
 			case this.game.CurrentStateEnum.GAIN_REACTION:	
 				this.isReaction = true;
-				this.reactionButton.stopAnimation();
+				//this.reactionButton.stopAnimation();
 				this.ringingSound.stop();
+				this.reactionSignal.animations.stop('signaling', true);
 				this.ringingBell.animations.stop('ringing', true);
 				break;
 			
@@ -284,8 +307,9 @@ Main.prototype = {
 				
 			case this.game.CurrentStateEnum.SECOND_NO_REACTION:
 				this.ringingSound.stop();
+				this.reactionSignal.animations.stop('signaling', true);
 				this.ringingBell.animations.stop('ringing', true);
-				this.reactionButton.stopAnimation();
+				//this.reactionButton.stopAnimation();
 				this.train.stop();
 				this.isEnded = true;
 				break;
@@ -323,7 +347,7 @@ Main.prototype = {
         } else {
             this.isTrainOverSensor = this.game.physics.arcade.overlap(this.train, this.sensors, null, null, this);
         }
-		this.trainSpeed = this.speedControl.y - 50;
+		//this.trainSpeed = this.speedControl.y - 50;
 		this.trainSpeedLabel.setText(this.trainSpeed.toString());
 		this.train.MAX_SPEED = this.trainSpeed;
     },
@@ -350,6 +374,11 @@ Main.prototype = {
 	semaphorClick: function() {
 		var frame = (this.semaphor.frame + 1) % 3;
 		this.semaphor.setFrames(frame, frame, frame, frame);
+	},  
+	speedControlClick: function() {
+		var frame = (this.speedControl.frame + 1) % 7;
+		this.trainSpeed = frame * 10;
+		this.speedControl.setFrames(frame, frame, frame, frame);
 	},
 
 	// DRAWING METHODS
